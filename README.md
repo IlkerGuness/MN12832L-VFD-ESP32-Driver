@@ -23,7 +23,7 @@ This is how you should wire up the MN12832L to your ESP32. Double-check your con
 
 *Note: Don't forget to connect your VCC (Logic 5V), GND, and the specific Filament/HV power supplies required by the VFD hardware.*
 
-*Note2: If you have exterel 5V, use it because sometimes ESP32 5V+ line can not be enough.*
+*Note2: If you have external 5V, use it because sometimes ESP32 5V+ line can not be enough.*
 
 ## 📺 See it in Action
 Check out the "Zogolder" animation and the Matrix rain effect here:
