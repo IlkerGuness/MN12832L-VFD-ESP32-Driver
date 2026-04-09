@@ -1,46 +1,36 @@
 // ============================================================
-//  MN12832L Vacuum Fluorescent Display Driver - MİLAT KODU + PARLAKLIK (DUAL GRID)
+//  MN12832L VFD Driver - CLEAN BASIC TEST (ORIGINAL PIXELS)
 //  Target: ESP32 WROOM-32D / ESP32-S3
 // ============================================================
 
 #include <SPI.h>
 
-// --- Pin Definitions ---
+// --- Pin Definitions (Sadece 4 Ana Pin) ---
 #define PIN_VFD_MOSI   23  // SIN
 #define PIN_VFD_SCK    18  // CLK
 #define PIN_VFD_LAT    22  // LAT
 #define PIN_VFD_BLK    21  // BK
-#define PIN_VFD_GCP    5   // GCP
-#define PIN_VFD_EF     4   // EF  (Filament)
-#define PIN_VFD_HV     15  // HV  (High Voltage)
 
-#define VFD_SPI_FREQ  2000000UL  // 2 MHz
-
-// --- YAZI YÖNÜ AYARLARI ---
+#define VFD_SPI_FREQ  2000000UL  
 #define MIRROR_X true 
 #define MIRROR_Y false
-
 #define VFD_GRIDS    43    
 #define VFD_BYTES    30
 
 static uint8_t framebuffer[32][16]; 
 
 // ============================================================
+//  MİLAT KODU - DUAL GRID (HİÇBİR PİKSELE DOKUNULMADI)
+// ============================================================
 void build_frame(uint8_t* buf, int grid) {
     memset(buf, 0, VFD_BYTES);
-
     int col_start = grid * 3; 
     
-    // MİLAT KODU Orijinal Fiziksel Dizilimi (Asla Dokunmuyoruz)
     int offsets[3];
     if (grid % 2 == 0) {
-        offsets[0] = 0; // a
-        offsets[1] = 2; // b
-        offsets[2] = 4; // c
+        offsets[0] = 0; offsets[1] = 2; offsets[2] = 4;
     } else {
-        offsets[0] = 5; // d
-        offsets[1] = 3; // e
-        offsets[2] = 1; // f
+        offsets[0] = 5; offsets[1] = 3; offsets[2] = 1;
     }
 
     for (int row = 0; row < 32; row++) {
@@ -60,51 +50,40 @@ void build_frame(uint8_t* buf, int grid) {
         }
     }
 
-    // ============================================================
-    // İŞTE BÜTÜN SIR BURADA: DUAL GRID (Çift Teli Aynı Anda Açma)
-    // ============================================================
-    // 1. Asıl Grid'i aç
+    // Orijinal Dual Grid Mantığı (Next Grid) - Parlaklık için
     int grid_bit_pos = 192 + grid; 
     buf[grid_bit_pos / 8] |= (0x80 >> (grid_bit_pos % 8));
     
-    // 2. Bir sonraki Grid'i de aç (O 2 sönük piksele elektron yetiştirmek için!)
     int next_grid = 192 + grid + 1;
     buf[next_grid / 8] |= (0x80 >> (next_grid % 8));
 }
 
-// ============================================================
 void vfd_latch() {
     digitalWrite(PIN_VFD_LAT, HIGH);
     delayMicroseconds(1);  
     digitalWrite(PIN_VFD_LAT, LOW);
 }
 
-// ============================================================
 void vfd_scan() {
     uint8_t frame[VFD_BYTES];
     SPISettings settings(VFD_SPI_FREQ, MSBFIRST, SPI_MODE0); 
     
     for (int g = 0; g < VFD_GRIDS; g++) {
         build_frame(frame, g);
-        
         SPI.beginTransaction(settings);
         SPI.writeBytes(frame, VFD_BYTES);
         SPI.endTransaction();
         
         digitalWrite(PIN_VFD_BLK, HIGH); 
-        
         vfd_latch();
-        
         delayMicroseconds(5); 
-        
         digitalWrite(PIN_VFD_BLK, LOW);  
-        
         delayMicroseconds(60); 
     }
 }
 
 // ============================================================
-//  Çizim Araçları (Orijinal Milat Kodu)
+//  Çizim Araçları
 // ============================================================
 void fb_clear() { memset(framebuffer, 0, sizeof(framebuffer)); }
 
@@ -123,10 +102,8 @@ void fb_vline(int x, int y, int h, bool on) {
 }
 
 void fb_frame() {
-    fb_hline(0, 0,  128, true);  
-    fb_hline(0, 31, 128, true);  
-    fb_vline(0,  0, 32,  true);  
-    fb_vline(127,0, 32,  true);  
+    fb_hline(0, 0, 128, true);  fb_hline(0, 31, 128, true);  
+    fb_vline(0, 0, 32, true);   fb_vline(127, 0, 32, true);  
 }
 
 const uint8_t FONT5x7[][5] PROGMEM = {
@@ -147,13 +124,11 @@ const uint8_t FONT5x7[][5] PROGMEM = {
 
 void fb_char(int x, int y, char c) {
     int idx = -1;
-    if (c == ' ')       idx = 0;
+    if (c == ' ') idx = 0;
     else if (c >= '0' && c <= '9') idx = 1 + (c - '0');
     else if (c >= 'A' && c <= 'Z') idx = 11 + (c - 'A');
     else if (c >= 'a' && c <= 'z') idx = 11 + (c - 'a'); 
-    
     if (idx < 0) return;
-    
     for (int col = 0; col < 5; col++) {
         uint8_t col_data = pgm_read_byte(&FONT5x7[idx][col]);
         for (int row = 0; row < 7; row++) {
@@ -162,31 +137,16 @@ void fb_char(int x, int y, char c) {
     }
 }
 
-void fb_str(int x, int y, const char* s) {
-    while (*s) {
-        fb_char(x, y, *s++);
-        x += 6; 
-    }
-}
+void fb_str(int x, int y, const char* s) { while (*s) { fb_char(x, y, *s++); x += 6; } }
 
 // ============================================================
 void setup() {
     Serial.begin(115200);
-    
     pinMode(PIN_VFD_LAT, OUTPUT);
     pinMode(PIN_VFD_BLK, OUTPUT);
-    pinMode(PIN_VFD_GCP, OUTPUT);
-    pinMode(PIN_VFD_EF, OUTPUT); 
-    pinMode(PIN_VFD_HV, OUTPUT); 
-    
-    digitalWrite(PIN_VFD_EF, HIGH);
-    delay(50); 
-    digitalWrite(PIN_VFD_HV, HIGH);
-    delay(50); 
     
     digitalWrite(PIN_VFD_BLK, LOW);   
     digitalWrite(PIN_VFD_LAT, LOW);   
-    digitalWrite(PIN_VFD_GCP, HIGH);
     
     SPI.begin(PIN_VFD_SCK, -1, PIN_VFD_MOSI, -1);
     delay(100); 
